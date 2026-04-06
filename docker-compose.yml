@@ -1,0 +1,70 @@
+version: "3.9"
+
+services:
+  # FastAPI app
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: banking-api
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # PostgreSQL
+  db:
+    image: postgres:15
+    container_name: bank-postgres
+    restart: always
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: bank
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # Redis
+  redis:
+    image: redis:7
+    container_name: bank-redis
+    restart: always
+    ports:
+      - "6379:6379"
+
+  # Alembic (runs migrations)
+  alembic:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: alembic-runner
+    env_file:
+      - .env
+    depends_on:
+      - db
+    command: alembic upgrade head
+
+  # Celery worker
+  celery:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: celery-worker
+    env_file:
+      - .env
+    depends_on:
+      - redis
+      - db
+    command: celery -A app.tasks.worker worker --loglevel=info
+
+volumes:
+  postgres_data:
